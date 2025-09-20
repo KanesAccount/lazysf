@@ -1,0 +1,27 @@
+logs/
+
+# Application logs
+logs/
+*.log
+
+# Build artifacts
+/lazysf
+/dist/
+/build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Config/cache directories that may contain sensitive data
+.lazysf/
+.config/
+
+# Go specific
+vendor/
