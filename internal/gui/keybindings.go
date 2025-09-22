@@ -70,6 +70,9 @@ func (gui *Gui) setKeybindings() error {
     if err := gui.g.SetKeybinding(panelName(3), ' ', gocui.ModNone, gui.wrap(gui.orgsSwitch)); err != nil {
         return err
     }
+    if err := gui.g.SetKeybinding(panelName(3), gocui.KeySpace, gocui.ModNone, gui.wrap(gui.orgsSwitch)); err != nil {
+        return err
+    }
     if err := gui.g.SetKeybinding(panelName(3), 'A', gocui.ModNone, gui.wrap(gui.orgsAuth)); err != nil {
         return err
     }
