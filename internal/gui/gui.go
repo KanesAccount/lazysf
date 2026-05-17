@@ -651,8 +651,26 @@ func (gui *Gui) fetchLogs() {
     }()
 }
 
-func (gui *Gui) logsUp(g *gocui.Gui, v *gocui.View) error { if gui.logsSel > 0 { gui.logsSel-- }; gui.renderLogs(); return nil }
-func (gui *Gui) logsDown(g *gocui.Gui, v *gocui.View) error { if gui.logsSel < len(gui.logs)-1 { gui.logsSel++ }; gui.renderLogs(); return nil }
+func (gui *Gui) logsUp(g *gocui.Gui, v *gocui.View) error {
+    if gui.panel2Mode == 0 {
+        // Logs mode
+        if gui.logsSel > 0 { gui.logsSel-- }
+    } else {
+        // Filters mode
+        if gui.filtersSel > 0 { gui.filtersSel-- }
+    }
+    gui.renderLogs(); return nil
+}
+func (gui *Gui) logsDown(g *gocui.Gui, v *gocui.View) error {
+    if gui.panel2Mode == 0 {
+        // Logs mode
+        if gui.logsSel < len(gui.logs)-1 { gui.logsSel++ }
+    } else {
+        // Filters mode
+        if gui.filtersSel < len(gui.filters)-1 { gui.filtersSel++ }
+    }
+    gui.renderLogs(); return nil
+}
 func (gui *Gui) logsPgUp(g *gocui.Gui, v *gocui.View) error { _, h := v.Size(); if h<=0{h=1}; gui.logsSel -= h; if gui.logsSel<0{gui.logsSel=0}; gui.renderLogs(); return nil }
 func (gui *Gui) logsPgDn(g *gocui.Gui, v *gocui.View) error { _, h := v.Size(); if h<=0{h=1}; gui.logsSel += h; if gui.logsSel>len(gui.logs)-1{gui.logsSel=len(gui.logs)-1}; gui.renderLogs(); return nil }
 func (gui *Gui) logsHome(g *gocui.Gui, v *gocui.View) error { gui.logsSel = 0; gui.renderLogs(); return nil }
