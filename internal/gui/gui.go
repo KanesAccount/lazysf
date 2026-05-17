@@ -22,9 +22,12 @@ type Gui struct {
     hasFocused   bool
 
     // orgs panel state
-    orgs     []OrgItem
-    orgSel   int
-    orgTop   int
+    orgs              []OrgItem
+    orgSel            int
+    orgTop            int
+    orgsLoading       bool
+    orgsSpinnerIndex  int
+    orgsLoadingMsg    string
 
     // logs panel state
     logs    []LogItem
@@ -176,8 +179,16 @@ func (gui *Gui) renderOrgs() {
         v.Highlight = true
         v.SelFgColor = gocui.ColorGreen
         for i, o := range gui.orgs {
+            selected := i == gui.orgSel
+            isCurrent := o.Alias == gui.currentAlias
             prefix := "  "
-            if i == gui.orgSel { prefix = "> " }
+            if isCurrent && selected {
+                prefix = "*> "
+            } else if isCurrent {
+                prefix = "*  "
+            } else if selected {
+                prefix = "> "
+            }
             line := fmt.Sprintf("%s%-24s  %-28s  %s %s", prefix, o.Alias, o.Username, o.ConnectedStatus, o.DefaultMarker)
             fmt.Fprintln(v, line)
         }
@@ -193,15 +204,44 @@ func (gui *Gui) renderOrgs() {
         cy := gui.orgSel - gui.orgTop
         if cy < 0 { cy = 0 }
         v.SetCursor(0, cy)
+        // show loading message at bottom right if loading (after scrolling setup)
+        if gui.orgsLoading && gui.orgsLoadingMsg != "" {
+            w, h := v.Size()
+            if h > 0 && w > 0 {
+                msgLen := len(gui.orgsLoadingMsg)
+                if msgLen < w {
+                    // Position message in bottom right of visible area
+                    x := w - msgLen - 1
+                    y := h - 1
+                    // Save current cursor position
+                    oldX, oldY := v.Cursor()
+                    // Write message
+                    v.SetCursor(x, y)
+                    fmt.Fprint(v, gui.orgsLoadingMsg)
+                    // Restore cursor position
+                    v.SetCursor(oldX, oldY)
+                }
+            }
+        }
         return nil
     })
 }
 
 func (gui *Gui) fetchOrgs() {
+    gui.fetchOrgsWithSpinner(true)
+}
+
+func (gui *Gui) fetchOrgsWithSpinner(showSpinner bool) {
+    if showSpinner {
+        gui.startOrgsSpinner("Loading organizations…")
+    }
     go func() {
         list, err := sf.ListAuthorizedOrgs()
         if err != nil {
             utils.Debugf("fetchOrgs error: %v", err)
+            if showSpinner {
+                gui.stopOrgsSpinner()
+            }
             return
         }
         items := make([]OrgItem, 0, len(list))
@@ -212,6 +252,9 @@ func (gui *Gui) fetchOrgs() {
         }
         gui.orgs = items
         if gui.orgSel >= len(gui.orgs) { gui.orgSel = 0 }
+        if showSpinner {
+            gui.stopOrgsSpinner()
+        }
         gui.renderOrgs()
     }()
 }
@@ -503,18 +546,24 @@ func (gui *Gui) orgsEnd(g *gocui.Gui, v *gocui.View) error {
 func (gui *Gui) orgsSwitch(g *gocui.Gui, v *gocui.View) error {
     if len(gui.orgs) == 0 { return nil }
     alias := gui.orgs[gui.orgSel].Alias
-    // switch target org
-    if _, err := sf.Exec("sf", "config", "set", "target-org", alias); err != nil {
-        utils.Debugf("switch org error: %v", err)
-    }
-    // refresh status
-    _, username, err := sf.GetCurrentOrgDisplay()
-    if err == nil {
-        gui.SetStatusText(alias+" → "+username)
-    }
-    gui.currentAlias = alias
-    // refresh orgs to reflect markers
-    gui.fetchOrgs()
+    gui.startOrgsSpinner("Switching org…")
+    go func() {
+        // switch target org
+        if _, err := sf.Exec("sf", "config", "set", "target-org", alias); err != nil {
+            utils.Debugf("switch org error: %v", err)
+            gui.stopOrgsSpinner()
+            return
+        }
+        // refresh status
+        _, username, err := sf.GetCurrentOrgDisplay()
+        if err == nil {
+            gui.SetStatusText(alias+" → "+username)
+        }
+        gui.currentAlias = alias
+        gui.stopOrgsSpinner()
+        // refresh orgs to reflect markers
+        gui.fetchOrgsWithSpinner(false)
+    }()
     return nil
 }
 func (gui *Gui) orgsAuth(g *gocui.Gui, v *gocui.View) error {
@@ -602,8 +651,26 @@ func (gui *Gui) fetchLogs() {
     }()
 }
 
-func (gui *Gui) logsUp(g *gocui.Gui, v *gocui.View) error { if gui.logsSel > 0 { gui.logsSel-- }; gui.renderLogs(); return nil }
-func (gui *Gui) logsDown(g *gocui.Gui, v *gocui.View) error { if gui.logsSel < len(gui.logs)-1 { gui.logsSel++ }; gui.renderLogs(); return nil }
+func (gui *Gui) logsUp(g *gocui.Gui, v *gocui.View) error {
+    if gui.panel2Mode == 0 {
+        // Logs mode
+        if gui.logsSel > 0 { gui.logsSel-- }
+    } else {
+        // Filters mode
+        if gui.filtersSel > 0 { gui.filtersSel-- }
+    }
+    gui.renderLogs(); return nil
+}
+func (gui *Gui) logsDown(g *gocui.Gui, v *gocui.View) error {
+    if gui.panel2Mode == 0 {
+        // Logs mode
+        if gui.logsSel < len(gui.logs)-1 { gui.logsSel++ }
+    } else {
+        // Filters mode
+        if gui.filtersSel < len(gui.filters)-1 { gui.filtersSel++ }
+    }
+    gui.renderLogs(); return nil
+}
 func (gui *Gui) logsPgUp(g *gocui.Gui, v *gocui.View) error { _, h := v.Size(); if h<=0{h=1}; gui.logsSel -= h; if gui.logsSel<0{gui.logsSel=0}; gui.renderLogs(); return nil }
 func (gui *Gui) logsPgDn(g *gocui.Gui, v *gocui.View) error { _, h := v.Size(); if h<=0{h=1}; gui.logsSel += h; if gui.logsSel>len(gui.logs)-1{gui.logsSel=len(gui.logs)-1}; gui.renderLogs(); return nil }
 func (gui *Gui) logsHome(g *gocui.Gui, v *gocui.View) error { gui.logsSel = 0; gui.renderLogs(); return nil }
@@ -915,6 +982,29 @@ func (gui *Gui) startSpinner(msg string) {
 }
 
 func (gui *Gui) stopSpinner() { gui.mainLoading = false }
+
+// spinner helpers for orgs panel
+func (gui *Gui) startOrgsSpinner(msg string) {
+    gui.orgsLoading = true
+    gui.orgsSpinnerIndex = 0
+    gui.orgsLoadingMsg = msg
+    frames := []rune{'⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'}
+    go func(){
+        for gui.orgsLoading {
+            ch := frames[gui.orgsSpinnerIndex%len(frames)]
+            gui.orgsLoadingMsg = fmt.Sprintf("%c %s", ch, msg)
+            gui.orgsSpinnerIndex++
+            gui.renderOrgs()
+            time.Sleep(100 * time.Millisecond)
+        }
+        gui.renderOrgs()
+    }()
+}
+
+func (gui *Gui) stopOrgsSpinner() { 
+    gui.orgsLoading = false 
+    gui.orgsLoadingMsg = ""
+}
 
 // command log rendering
 func (gui *Gui) watchCmdLog() {

@@ -1,144 +1,197 @@
-Lazysf
+# Lazysf
 
-Overview
-- Lazysf is a Go TUI inspired by Lazygit that consolidates common Salesforce debugging workflows in a single, keyboard-driven interface. It shells out to the `sf` CLI for org data, Apex logs, and trace flags, and uses `ripgrep` for fast filtering.
+A Go terminal UI inspired by Lazygit for common Salesforce debugging workflows. Lazysf provides a keyboard-driven interface for orgs, Apex logs, trace flags, filtering, and editor integration while shelling out to the Salesforce CLI (`sf`) and `ripgrep` (`rg`).
 
-Dependencies
-- Go (1.22+)
-- Salesforce CLI: `sf`
-- ripgrep: `rg`
-- Optional
-  - `nvr` (neovim-remote) for opening logs in your existing Neovim instance
-  - `jq` (useful for local debugging)
+## Requirements
 
-Build & Run
-- Fetch deps and build:
-  - `go mod tidy`
-  - `go build -o lazysf ./cmd/lazysf`
-- Optionally add to your PATH:
-  - `mkdir -p ~/.config/bin && ln -s "$(pwd)/lazysf" ~/.config/bin/lazysf`
-  - Ensure `~/.config/bin` is in PATH
-- Run:
-  - `lazysf` (or `go run ./cmd/lazysf` while developing)
+- Go 1.22+
+- Salesforce CLI (`sf`)
+- ripgrep (`rg`)
 
-Data & Paths
-- Per-org data is stored under:
-  - `~/.config/.lazysf/orgs/<alias>/logs/` (fallback to `~/.lazysf` if `~/.config` does not exist)
-- Command logs and internal app logs are written to `./logs/` in your working directory.
+Optional:
 
-Panels & Layout
-- Panel 0: Status (top-left)
-  - Shows alias → username, and Neovim server (when space allows)
-- Panel 1: Traces (left column, top)
-  - Manages trace flags for users (add, edit duration, delete)
-  - Displays compact times: `DD HH:MM → DD HH:MM` and remaining time (`Left`)
-- Panel 2: Logs / Filters (left column, middle; tabs)
-  - Logs: navigate log list and preview on demand
-  - Filters: manage include terms; applies `rg -n -C25` to current log
-- Panel 3: Orgs (left column, bottom)
-  - View/switch authenticated orgs; auth new orgs via web
-- Panel 4: Main (right column)
-  - Displays a loaded log; supports searching and scrolling
-  - Note: loading a log (Space on Panel 2) does not change focus — use Tab to switch panels
-- Panel 5: Command Log (bottom-right)
-  - Shows recent commands with exit code, duration; right-aligned `?: help` hint
+- `nvr` (`neovim-remote`) to open logs in an existing Neovim instance
+- `jq` for local debugging
 
-Expanded Modes
-- Expand a panel to full width while keeping the helpbar visible:
-  - Traces (1): Enter → expand/collapse
-  - Logs (2): Enter → expand/collapse
-  - Main (4): Enter → expand/collapse (keeps command log visible at bottom)
-  - Cmd Log (5): Enter → expand/collapse
-- Esc collapses any expanded panel.
+## Installation
 
-Keybindings (summary)
-- Global
-  - `Tab`: cycle panels
-  - `0..5`: focus panel
-  - `?`: help modal
-  - `Esc`: close modals / collapse expanded panel
-  - `q` / `Ctrl-C`: quit
+```sh
+go mod tidy
+go build -o lazysf ./cmd/lazysf
+```
 
-- Status (0)
-  - Shows active org and NVIM server (short name)
+Optionally add the binary to your `PATH`:
 
-- Traces (1)
-  - `j`/`k`, `↑/↓`: move
-  - `r`: refresh
-  - `a`: add trace (prompt for user match; default 1h)
-  - `e`: edit duration (accepts `30m`, `2h`, or minutes-only)
-  - `d`: delete trace
-  - `Enter`: expand/collapse
-  - Note: If trace update fails due to exceeded debug log quota, lazysf prompts to delete all logs and retries.
+```sh
+mkdir -p ~/.config/bin
+ln -s "$(pwd)/lazysf" ~/.config/bin/lazysf
+```
 
-- Logs / Filters (2)
-- Logs tab
-    - `j`/`k`, `↑/↓`, `PgUp/PgDn`, `Home/End`: navigate list
-    - `Space`: load/preview selected log in Panel 4 (on demand)
-      - Shows a spinner in Panel 4 while loading
-      - Marks the opened log with `*` (e.g., `*>` when selected)
-      - Does not auto-focus Panel 4; press `Tab` to switch
-    - `Enter`: expand/collapse logs list
-    - `D`: delete all Apex logs (confirmation)
-  - Filters tab
-    - `t`: toggle tabs
-    - `a`: add filter
-    - `e`: edit filter
-    - `d`: delete filter
-    - Filters apply `rg -n -C25` to current log in the main panel
+Ensure `~/.config/bin` is in your `PATH`.
 
-- Orgs (3)
-  - `j`/`k`, `↑/↓`, `PgUp/PgDn`, `Home/End`: navigate
-  - `Space`: switch target org
-  - `A`: auth new org via web
+## Usage
 
-- Main (4)
-  - `j`/`k`, `↑/↓`: scroll by one line
-  - `PgUp/PgDn`, `Home/End`, `gg/G`: page/top/bottom
-  - `U`/`D`: half-page jump up/down
-  - `/`: search; `n`/`N`: next/prev
-  - `o`: open in editor at current match (or top-of-view); sets `ft=log`
-  - `S`: set Neovim server (updates status; used by `nvr` integration)
-  - `Enter`: expand/collapse (keeps command log visible)
-  - Hint: default message “Select a log with Space to load” appears until you load the first log
+Run the built binary:
 
-- Command Log (5)
-  - `Enter`: expand/collapse
-  - Shows recent commands with timing and status
+```sh
+lazysf
+```
 
-Neovim Integration
-- Opening logs in your existing Neovim instance uses `nvr`:
-  - Preferred server resolution:
-    1) `LAZYSF_NVIM_SERVER`
-    2) `NVIM_LISTEN_ADDRESS`
-    3) best-effort `nvr --remote-tab`
-  - To target a specific Neovim instance:
-    - Press `S` in Panel 4 and paste `:echo v:servername`
-  - Log opens at current search hit line (or the top) with `ft=log` set.
+Or run directly while developing:
 
-Traces & Debug Log Quota
-- If a trace create/update fails due to exceeding org debug log quota, lazysf prompts to delete all Apex logs (Tooling API) and retries automatically upon confirmation.
+```sh
+go run ./cmd/lazysf
+```
 
-Filtering with ripgrep
-- Filters tab builds an alternation pattern from your terms and runs:
-  - `rg -n -C25 -e "term1|term2|..." <logfile>`
-- Results are shown in Panel 4 with context blocks and search highlighting.
+## Data and Logs
 
-Troubleshooting
-- Space on Logs tab not loading: ensure you’re on the Logs tab (press `t` to toggle when in Panel 2).
-- `nvr` issues with multiple Neovim instances:
-  - Set a specific server via `S` in Panel 4 or export `LAZYSF_NVIM_SERVER`.
-- Command log truncation:
-  - Press `Enter` on Panel 5 to expand; press `Esc` to collapse.
+Per-org data is stored at:
 
-Development Notes
-- Code Structure (high-level)
-  - `cmd/lazysf/`: entrypoint
-  - `internal/gui/`: views, layout, keybindings, modals
-  - `internal/sf/`: thin wrappers around `sf` CLI (orgs, logs, traces, users)
-  - `internal/rg/`: ripgrep helpers (future: parse `--json`)
-  - `internal/utils/`: editor open, paths, logging
-  - `internal/cmdlog/`: command log ring buffer + subscriptions
-- Validate your changes by running:
-  - `go build -o lazysf ./cmd/lazysf`
-  - `go run ./cmd/lazysf`
+```text
+~/.config/.lazysf/orgs/<alias>/logs/
+```
+
+If `~/.config` does not exist, Lazysf falls back to `~/.lazysf`.
+
+Command logs and internal application logs are written to `./logs/` in the current working directory.
+
+## Layout
+
+| Panel | Name | Description |
+| --- | --- | --- |
+| 0 | Status | Active org alias/username and Neovim server when available |
+| 1 | Traces | Manage trace flags for users |
+| 2 | Logs / Filters | Browse logs, load previews, and manage ripgrep filters |
+| 3 | Orgs | View, switch, and authenticate Salesforce orgs |
+| 4 | Main | Display loaded logs, search results, and filtered output |
+| 5 | Command Log | Recent commands with exit code and duration |
+
+## Keybindings
+
+### Global
+
+| Key | Action |
+| --- | --- |
+| `Tab` | Cycle panels |
+| `0`-`5` | Focus panel |
+| `?` | Open help |
+| `Esc` | Close modal or collapse expanded panel |
+| `q`, `Ctrl-C` | Quit |
+
+### Traces (`1`)
+
+| Key | Action |
+| --- | --- |
+| `j`/`k`, `↑`/`↓` | Move selection |
+| `r` | Refresh |
+| `a` | Add trace flag for a user, defaulting to 1 hour |
+| `e` | Edit duration (`30m`, `2h`, or minutes-only) |
+| `d` | Delete trace flag |
+| `Enter` | Expand/collapse panel |
+
+If a trace create/update fails because the debug log quota is exceeded, Lazysf prompts to delete all Apex logs and retries after confirmation.
+
+### Logs / Filters (`2`)
+
+Use `t` to switch between the Logs and Filters tabs.
+
+#### Logs tab
+
+| Key | Action |
+| --- | --- |
+| `j`/`k`, `↑`/`↓` | Move selection |
+| `PgUp`/`PgDn`, `Home`/`End` | Navigate list |
+| `Space` | Load selected log in the Main panel |
+| `Enter` | Expand/collapse logs list |
+| `D` | Delete all Apex logs after confirmation |
+
+Loading a log does not move focus to the Main panel. Press `Tab` to switch panels. The opened log is marked with `*`.
+
+#### Filters tab
+
+| Key | Action |
+| --- | --- |
+| `a` | Add filter |
+| `e` | Edit filter |
+| `d` | Delete filter |
+
+Filters are applied to the current log with:
+
+```sh
+rg -n -C25 -e "term1|term2|..." <logfile>
+```
+
+### Orgs (`3`)
+
+| Key | Action |
+| --- | --- |
+| `j`/`k`, `↑`/`↓` | Move selection |
+| `PgUp`/`PgDn`, `Home`/`End` | Navigate list |
+| `Space` | Switch target org |
+| `A` | Authenticate a new org via web |
+
+### Main (`4`)
+
+| Key | Action |
+| --- | --- |
+| `j`/`k`, `↑`/`↓` | Scroll one line |
+| `PgUp`/`PgDn` | Page up/down |
+| `Home`/`End`, `gg`/`G` | Jump to top/bottom |
+| `U`/`D` | Half-page up/down |
+| `/` | Search |
+| `n`/`N` | Next/previous search result |
+| `o` | Open in editor at current match or top of view |
+| `S` | Set Neovim server |
+| `Enter` | Expand/collapse panel, keeping Command Log visible |
+
+Before a log is loaded, the Main panel displays: `Select a log with Space to load`.
+
+### Command Log (`5`)
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Expand/collapse panel |
+
+## Neovim Integration
+
+Lazysf can open logs in an existing Neovim instance using `nvr`.
+
+Server resolution order:
+
+1. `LAZYSF_NVIM_SERVER`
+2. `NVIM_LISTEN_ADDRESS`
+3. Best-effort `nvr --remote-tab`
+
+To target a specific Neovim instance, press `S` in the Main panel and paste the output of:
+
+```vim
+:echo v:servername
+```
+
+Logs open at the current search hit line, or the top of the current view, with `ft=log` set.
+
+## Troubleshooting
+
+- **Space does not load a log:** ensure Panel 2 is on the Logs tab. Press `t` to toggle tabs.
+- **Neovim opens the wrong instance:** set a server with `S` in the Main panel or export `LAZYSF_NVIM_SERVER`.
+- **Command output is truncated:** press `Enter` on Panel 5 to expand the Command Log.
+
+## Development
+
+Project structure:
+
+```text
+cmd/lazysf/       Entry point
+internal/gui/     Views, layout, keybindings, and modals
+internal/sf/      Wrappers around sf CLI commands
+internal/rg/      ripgrep helpers
+internal/utils/   Editor integration, paths, and logging
+internal/cmdlog/  Command log ring buffer and subscriptions
+```
+
+Validate changes with:
+
+```sh
+go build -o lazysf ./cmd/lazysf
+go run ./cmd/lazysf
+```
